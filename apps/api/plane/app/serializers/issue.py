@@ -198,13 +198,20 @@ class IssueCreateSerializer(BaseSerializer):
     def create(self, validated_data):
         assignees = validated_data.pop("assignee_ids", None)
         labels = validated_data.pop("label_ids", None)
+        explicit_created_by_id = validated_data.pop("created_by_id", None)
+        explicit_updated_by_id = validated_data.pop("updated_by_id", None)
 
         project_id = self.context["project_id"]
         workspace_id = self.context["workspace_id"]
         default_assignee_id = self.context["default_assignee_id"]
 
         # Create Issue
-        issue = Issue.objects.create(**validated_data, project_id=project_id)
+        issue = Issue(**validated_data, project_id=project_id)
+        if explicit_created_by_id is not None:
+            issue.created_by_id = explicit_created_by_id
+        if explicit_updated_by_id is not None:
+            issue.updated_by_id = explicit_updated_by_id
+        issue.save(disable_auto_set_user=explicit_created_by_id is not None or explicit_updated_by_id is not None)
 
         # Issue Audit Users
         created_by_id = issue.created_by_id
