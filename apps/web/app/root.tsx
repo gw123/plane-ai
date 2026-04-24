@@ -8,7 +8,7 @@ import type { ReactNode } from "react";
 import Script from "next/script";
 import { Links, Meta, Outlet, Scripts } from "react-router";
 import type { LinksFunction } from "react-router";
-import { ThemeProvider, useTheme } from "next-themes";
+import { ThemeProvider } from "next-themes";
 // plane imports
 import { SITE_DESCRIPTION, SITE_NAME } from "@plane/constants";
 import { cn } from "@plane/utils";
@@ -22,15 +22,16 @@ import icon512 from "@/app/assets/icons/icon-512x512.png?url";
 import ogImage from "@/app/assets/og-image.png?url";
 import globalStyles from "@/styles/globals.css?url";
 import type { Route } from "./+types/root";
-// components
-import { LogoSpinner } from "@/components/common/logo-spinner";
 // local
 import { CustomErrorComponent } from "./error";
 import { AppProvider } from "./provider";
 // fonts
+// oxlint-disable-next-line import/no-unassigned-import
 import "@fontsource-variable/inter";
 import interVariableWoff2 from "@fontsource-variable/inter/files/inter-latin-wght-normal.woff2?url";
+// oxlint-disable-next-line import/no-unassigned-import
 import "@fontsource/material-symbols-rounded";
+// oxlint-disable-next-line import/no-unassigned-import
 import "@fontsource/ibm-plex-mono";
 
 const APP_TITLE = "Plane | Simple, extensible, open-source project management tool.";
@@ -133,14 +134,9 @@ export default function Root() {
 }
 
 export function HydrateFallback() {
-  const { resolvedTheme } = useTheme();
-
-  // if we are on the server or the theme is not resolved, return an empty div
-  if (typeof window === "undefined" || resolvedTheme === undefined) return <div />;
-
   return (
     <div className="relative flex h-screen w-full items-center justify-center bg-canvas">
-      <LogoSpinner />
+      <div className="border-t-accent-primary h-8 w-8 animate-spin rounded-full border-2 border-subtle" />
     </div>
   );
 }

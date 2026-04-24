@@ -4,5 +4,6 @@
  * See the LICENSE file for details.
  */
 
-export * from "./ai.service";
-export * from "./agent.service";
+export * from "./agent-model-adapter";
+export * from "./agent-runtime-provider";
+export * from "./agent-thread-shell";

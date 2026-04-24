@@ -87,6 +87,13 @@ export const coreRoutes: RouteConfigEntry[] = [
           route(":workspaceSlug/notifications", "./(all)/[workspaceSlug]/(projects)/notifications/page.tsx"),
         ]),
 
+        // Agent
+        route(":workspaceSlug/agent", "./(all)/[workspaceSlug]/(projects)/agent/page.tsx"),
+        route(
+          ":workspaceSlug/agent/:conversationId",
+          "./(all)/[workspaceSlug]/(projects)/agent/[conversationId]/page.tsx"
+        ),
+
         // Profile
         layout("./(all)/[workspaceSlug]/(projects)/profile/[userId]/layout.tsx", [
           route(":workspaceSlug/profile/:userId", "./(all)/[workspaceSlug]/(projects)/profile/[userId]/page.tsx"),
@@ -201,6 +208,16 @@ export const coreRoutes: RouteConfigEntry[] = [
               "./(all)/[workspaceSlug]/(projects)/projects/(detail)/[projectId]/pages/(detail)/[pageId]/page.tsx"
             ),
           ]),
+
+          // Agent
+          route(
+            ":workspaceSlug/projects/:projectId/agent",
+            "./(all)/[workspaceSlug]/(projects)/projects/(detail)/[projectId]/agent/page.tsx"
+          ),
+          route(
+            ":workspaceSlug/projects/:projectId/agent/:conversationId",
+            "./(all)/[workspaceSlug]/(projects)/projects/(detail)/[projectId]/agent/[conversationId]/page.tsx"
+          ),
 
           // Pages List
           layout("./(all)/[workspaceSlug]/(projects)/projects/(detail)/[projectId]/pages/(list)/layout.tsx", [

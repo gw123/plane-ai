@@ -5,6 +5,7 @@
 from uuid import uuid4
 
 from django.db import transaction
+from django.db.models.functions import Coalesce
 from django.http import StreamingHttpResponse
 from django.shortcuts import get_object_or_404
 
@@ -19,12 +20,7 @@ from plane.agent.chat import (
     AgentChatService,
 )
 from plane.agent.stream import encode_sse_event
-from plane.app.serializers import (
-    AgentChatRequestSerializer,
-    AgentConversationDetailSerializer,
-    AgentConversationSerializer,
-    AgentMessageSerializer,
-)
+from plane.app.serializers import AgentChatRequestSerializer, AgentConversationSerializer, AgentMessageSerializer
 from plane.app.views.base import BaseViewSet
 from plane.db.models import AgentConversation, AgentMessage, Project, ProjectMember, Workspace, WorkspaceMember
 
@@ -33,8 +29,6 @@ class AgentConversationViewSet(BaseViewSet):
     model = AgentConversation
 
     def get_serializer_class(self):
-        if self.action == "retrieve":
-            return AgentConversationDetailSerializer
         return AgentConversationSerializer
 
     def _has_scope_access(self):
@@ -67,6 +61,7 @@ class AgentConversationViewSet(BaseViewSet):
             .select_related("workspace", "project")
             .prefetch_related("messages")
         )
+        queryset = queryset.order_by(Coalesce("last_message_at", "created_at").desc(), "-created_at")
 
         if self.project_id:
             return queryset.filter(project_id=self.project_id)
@@ -89,7 +84,7 @@ class AgentConversationViewSet(BaseViewSet):
             return self._scope_denied_response()
 
         serializer = self.get_serializer(self.get_queryset(), many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response({"results": serializer.data}, status=status.HTTP_200_OK)
 
     def create(self, request, slug, project_id=None):
         if not self._has_scope_access():
@@ -118,8 +113,13 @@ class AgentConversationViewSet(BaseViewSet):
             return self._scope_denied_response()
 
         conversation = get_object_or_404(self.get_queryset(), pk=pk)
-        serializer = self.get_serializer(conversation)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(
+            {
+                "conversation": AgentConversationSerializer(conversation).data,
+                "messages": AgentMessageSerializer(conversation.messages.order_by("created_at"), many=True).data,
+            },
+            status=status.HTTP_200_OK,
+        )
 
     def destroy(self, request, slug, pk, project_id=None):
         if not self._has_scope_access():
