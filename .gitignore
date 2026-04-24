@@ -84,6 +84,7 @@ package-lock.json
 
 .secrets
 tmp/
+tests/e2e/.auth/
 
 ## packages
 dist

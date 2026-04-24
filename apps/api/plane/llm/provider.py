@@ -39,6 +39,7 @@ class LLMProvider:
     name: str = ""
     models: List[str] = []
     default_model: str = ""
+    supports_custom_models: bool = False
 
     @classmethod
     def get_config(cls) -> Dict[str, str | List[str]]:
@@ -53,6 +54,7 @@ class OpenAIProvider(LLMProvider):
     name = "OpenAI"
     models = ["gpt-3.5-turbo", "gpt-4o-mini", "gpt-4o", "o1-mini", "o1-preview"]
     default_model = "gpt-4o-mini"
+    supports_custom_models = True
 
 
 class AnthropicProvider(LLMProvider):
@@ -101,6 +103,10 @@ def get_llm_config() -> Tuple[str | None, str | None, str | None]:
         ]
     )
 
+    api_key = _clean_config_value(api_key)
+    provider_key = _clean_config_value(provider_key)
+    model = _clean_config_value(model)
+
     provider = SUPPORTED_PROVIDERS.get(provider_key.lower()) if provider_key else None
     if not provider:
         log_exception(ValueError(f"Unsupported provider: {provider_key}"))
@@ -113,7 +119,7 @@ def get_llm_config() -> Tuple[str | None, str | None, str | None]:
     if not model:
         model = provider.default_model
 
-    if model not in provider.models:
+    if not provider.supports_custom_models and model not in provider.models:
         log_exception(
             ValueError(
                 f"Model {model} not supported by {provider.name}. Supported models: {', '.join(provider.models)}"
@@ -124,16 +130,47 @@ def get_llm_config() -> Tuple[str | None, str | None, str | None]:
     return api_key, model, provider_key
 
 
+def _clean_config_value(value: Any) -> str | None:
+    if value is None:
+        return None
+
+    normalized = str(value).strip()
+    return normalized or None
+
+
+def get_llm_base_url() -> str | None:
+    (base_url,) = get_configuration_value(
+        [
+            {
+                "key": "LLM_BASE_URL",
+                "default": (
+                    os.environ.get("LLM_BASE_URL")
+                    or os.environ.get("OPENAI_BASE_URL")
+                    or os.environ.get("OPENAI_API_BASE")
+                ),
+            }
+        ]
+    )
+    return _clean_config_value(base_url)
+
+
 def _normalize_model_name(model: str, provider: str) -> str:
     if provider.lower() == "gemini":
         return f"gemini/{model}"
     return model
 
 
+def _get_openai_client(api_key: str) -> OpenAI:
+    base_url = get_llm_base_url()
+    if base_url:
+        return OpenAI(api_key=api_key, base_url=base_url)
+    return OpenAI(api_key=api_key)
+
+
 def get_llm_response(task, prompt, api_key: str, model: str, provider: str) -> Tuple[str | None, str | None]:
     final_text = task + "\n" + prompt
     try:
-        client = OpenAI(api_key=api_key)
+        client = _get_openai_client(api_key)
         chat_completion = client.chat.completions.create(
             model=_normalize_model_name(model, provider),
             messages=[{"role": "user", "content": final_text}],
@@ -196,7 +233,7 @@ def get_chat_completion(
             chat_messages.append({"role": "system", "content": system_prompt})
         chat_messages.extend(messages)
 
-        client = OpenAI(api_key=api_key)
+        client = _get_openai_client(api_key)
         request_kwargs = {
             "model": _normalize_model_name(model, provider),
             "messages": chat_messages,

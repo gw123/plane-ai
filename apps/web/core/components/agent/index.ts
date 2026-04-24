@@ -7,3 +7,4 @@
 export * from "./agent-model-adapter";
 export * from "./agent-runtime-provider";
 export * from "./agent-thread-shell";
+export * from "./tool-ui";

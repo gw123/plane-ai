@@ -26,11 +26,13 @@ import {
   createOptimisticAssistantMessage,
   createOptimisticUserMessage,
   finalizeAssistantMessage,
+  getAgentMessageToolResults,
   replaceMessageById,
   toThreadMessageLike,
   updateAssistantMessageDelta,
 } from "./agent-model-adapter";
 import { cleanupCreatedConversationAfterFailure } from "./agent-thread-shell.helpers";
+import { AgentToolResultCards, getAgentToolRenderModels, getAgentUnsupportedToolResultFallbackText } from "./tool-ui";
 
 type AgentThreadShellProps = IAgentScopeRoute & {
   conversationId?: string;
@@ -292,7 +294,7 @@ export const AgentThreadShell = observer(function AgentThreadShell(props: AgentT
   const runtimeDisabled = Boolean(conversationId && conversationError) || isCreatingConversation;
   const activeConversationCandidate = conversationDetail?.conversation ?? null;
   const activeConversation = activeConversationCandidate?.id === conversationId ? activeConversationCandidate : null;
-  const emptyState = !conversationId && messages.length === 0;
+  const showEmptyViewport = messages.length === 0;
   const loadingCurrentConversation = Boolean(conversationId) && !activeConversation && isConversationLoading;
 
   return (
@@ -384,16 +386,6 @@ export const AgentThreadShell = observer(function AgentThreadShell(props: AgentT
                 This thread cannot be loaded right now. Start a new chat or go back to the list.
               </div>
             </div>
-          ) : emptyState ? (
-            <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-surface-2 text-secondary">
-                <Bot className="h-5 w-5" />
-              </div>
-              <div className="text-base font-medium text-primary">Start a thread</div>
-              <div className="text-sm max-w-lg text-tertiary">
-                Send a message to create a conversation and keep the history in Plane.
-              </div>
-            </div>
           ) : (
             <AgentRuntimeProvider
               messages={messages}
@@ -404,32 +396,78 @@ export const AgentThreadShell = observer(function AgentThreadShell(props: AgentT
             >
               <ThreadPrimitive.Root className="flex min-h-0 flex-1 flex-col">
                 <ThreadPrimitive.Viewport className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-                  <ThreadPrimitive.Messages>
-                    {({ message }) => (
-                      <MessagePrimitive.Root
-                        key={message.id}
-                        className={cn("mb-4 flex w-full", message.role === "user" ? "justify-end" : "justify-start")}
-                      >
-                        <div
-                          className={cn(
-                            "text-sm shadow-sm max-w-3xl rounded-2xl border px-4 py-3 leading-6",
-                            message.role === "user"
-                              ? "border-transparent bg-accent-primary text-on-color"
-                              : "border-subtle bg-surface-2 text-primary"
-                          )}
-                        >
-                          {message.role === "assistant" && message.status?.type === "running" ? (
-                            <div className="flex items-center gap-2 text-tertiary">
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                              <span>{getMessageText(message) || "Working..."}</span>
+                  {showEmptyViewport ? (
+                    <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-surface-2 text-secondary">
+                        <Bot className="h-5 w-5" />
+                      </div>
+                      <div className="text-base font-medium text-primary">
+                        {conversationId ? "Start the conversation" : "Start a thread"}
+                      </div>
+                      <div className="text-sm max-w-lg text-tertiary">
+                        {conversationId
+                          ? "Send a message to kick off this thread."
+                          : "Send a message to create a conversation and keep the history in Plane."}
+                      </div>
+                    </div>
+                  ) : (
+                    <ThreadPrimitive.Messages>
+                      {({ message }) => {
+                        const assistantToolResults =
+                          message.role === "assistant" ? getAgentMessageToolResults(message) : null;
+                        const toolRenderModels =
+                          message.role === "assistant" ? getAgentToolRenderModels(assistantToolResults) : [];
+                        const fallbackToolResultText =
+                          message.role === "assistant" && message.status?.type !== "running"
+                            ? getAgentUnsupportedToolResultFallbackText(assistantToolResults)
+                            : null;
+                        const hasToolCards = toolRenderModels.length > 0;
+                        const hasBubbleContent =
+                          message.role === "user" ||
+                          message.status?.type === "running" ||
+                          Boolean(fallbackToolResultText) ||
+                          getMessageText(message).trim().length > 0;
+
+                        return (
+                          <MessagePrimitive.Root
+                            key={message.id}
+                            className={cn(
+                              "mb-4 flex w-full",
+                              message.role === "user" ? "justify-end" : "justify-start"
+                            )}
+                          >
+                            <div className="flex max-w-3xl flex-col gap-2">
+                              {hasBubbleContent && (
+                                <div
+                                  className={cn(
+                                    "text-sm shadow-sm rounded-2xl border px-4 py-3 leading-6",
+                                    message.role === "user"
+                                      ? "border-transparent bg-accent-primary text-on-color"
+                                      : "border-subtle bg-surface-2 text-primary"
+                                  )}
+                                >
+                                  {message.role === "assistant" && message.status?.type === "running" ? (
+                                    <div className="flex items-center gap-2 text-tertiary">
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                      <span>{getMessageText(message) || "Working..."}</span>
+                                    </div>
+                                  ) : fallbackToolResultText && getMessageText(message).trim().length === 0 ? (
+                                    <span>{fallbackToolResultText}</span>
+                                  ) : (
+                                    <MessagePrimitive.Content />
+                                  )}
+                                </div>
+                              )}
+
+                              {message.role === "assistant" && hasToolCards && (
+                                <AgentToolResultCards renderModels={toolRenderModels} />
+                              )}
                             </div>
-                          ) : (
-                            <MessagePrimitive.Content />
-                          )}
-                        </div>
-                      </MessagePrimitive.Root>
-                    )}
-                  </ThreadPrimitive.Messages>
+                          </MessagePrimitive.Root>
+                        );
+                      }}
+                    </ThreadPrimitive.Messages>
+                  )}
                 </ThreadPrimitive.Viewport>
 
                 {streamError && (

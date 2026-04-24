@@ -19,6 +19,7 @@ from plane.agent.chat import (
     AgentChatResult,
     AgentChatService,
 )
+from plane.app.renderers import ServerSentEventRenderer
 from plane.agent.stream import encode_sse_event
 from plane.app.serializers import AgentChatRequestSerializer, AgentConversationSerializer, AgentMessageSerializer
 from plane.app.views.base import BaseViewSet
@@ -27,6 +28,12 @@ from plane.db.models import AgentConversation, AgentMessage, Project, ProjectMem
 
 class AgentConversationViewSet(BaseViewSet):
     model = AgentConversation
+
+    def get_renderers(self):
+        if getattr(self, "action", None) == "chat":
+            return [ServerSentEventRenderer()]
+
+        return super().get_renderers()
 
     def get_serializer_class(self):
         return AgentConversationSerializer

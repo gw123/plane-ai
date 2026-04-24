@@ -6,12 +6,13 @@ from dataclasses import dataclass
 from typing import Any
 from html import escape
 
+from django.db import transaction
 from django.db.models import Q
 
 from plane.app.issue_creation import enqueue_issue_created_activity
 from plane.app.serializers import IssueCreateSerializer
 from plane.app.permissions.base import ROLE
-from plane.db.models import Project, ProjectMember, WorkspaceMember
+from plane.db.models import Project, ProjectMember, State, WorkspaceMember
 
 
 @dataclass(frozen=True)
@@ -169,6 +170,8 @@ class ListProjectsTool:
 
 
 class CreateIssueTool:
+    SUPPORTED_INPUT_KEYS = frozenset({"name", "description", "priority"})
+
     definition = AgentToolDefinition(
         name="create_issue",
         description="Create a new issue in the current project.",
@@ -236,6 +239,32 @@ class CreateIssueTool:
         escaped = escape(description).replace("\n", "<br />")
         return f"<p>{escaped}</p>"
 
+    @classmethod
+    def _validate_supported_input(cls, input_data: dict[str, Any]) -> AgentToolExecutionResult | None:
+        unsupported_keys = sorted(set(input_data.keys()) - cls.SUPPORTED_INPUT_KEYS)
+        if not unsupported_keys:
+            return None
+
+        unsupported_fields = ", ".join(unsupported_keys)
+        return AgentToolExecutionResult(
+            success=False,
+            output=None,
+            error={
+                "code": "AGENT_TOOL_VALIDATION_ERROR",
+                "message": (
+                    f"Unsupported create_issue input fields: {unsupported_fields}. "
+                    "Only name, description, priority are supported."
+                ),
+            },
+        )
+
+    @staticmethod
+    def _build_missing_state_error() -> dict[str, str]:
+        return {
+            "code": "AGENT_TOOL_EXECUTION_ERROR",
+            "message": "This project has no available issue state. Configure a non-triage state before using create_issue.",
+        }
+
     @staticmethod
     def _has_project_write_access(ctx: AgentToolExecutionContext) -> bool:
         has_allowed_role = ProjectMember.objects.filter(
@@ -285,6 +314,10 @@ class CreateIssueTool:
                 },
             )
 
+        unsupported_input_result = cls._validate_supported_input(input_data)
+        if unsupported_input_result is not None:
+            return unsupported_input_result
+
         project = Project.objects.filter(id=ctx.project_id, workspace_id=ctx.workspace_id).first()
         if project is None:
             return AgentToolExecutionResult(
@@ -294,6 +327,13 @@ class CreateIssueTool:
                     "code": "AGENT_TOOL_NOT_FOUND",
                     "message": "Project not found.",
                 },
+            )
+
+        if not State.objects.filter(project_id=project.id).exists():
+            return AgentToolExecutionResult(
+                success=False,
+                output=None,
+                error=cls._build_missing_state_error(),
             )
 
         payload = {
@@ -322,11 +362,20 @@ class CreateIssueTool:
                 },
             )
 
-        issue = serializer.save(created_by_id=ctx.user_id, updated_by_id=ctx.user_id)
-        issue = (
-            issue.__class__.objects.select_related("project", "state")
-            .get(id=issue.id)
-        )
+        try:
+            with transaction.atomic():
+                issue = serializer.save(created_by_id=ctx.user_id, updated_by_id=ctx.user_id)
+                issue = (
+                    issue.__class__.objects.select_related("project", "state").get(id=issue.id)
+                )
+                if issue.state is None:
+                    raise ValueError
+        except ValueError:
+            return AgentToolExecutionResult(
+                success=False,
+                output=None,
+                error=cls._build_missing_state_error(),
+            )
 
         enqueue_issue_created_activity(
             requested_data=input_data,

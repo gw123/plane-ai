@@ -3,6 +3,7 @@
 # See the LICENSE file for details.
 
 import json
+import os
 from dataclasses import dataclass
 
 from plane.agent.tools import AgentToolExecutionContext, AgentToolRegistry
@@ -12,6 +13,7 @@ from plane.llm.provider import LLMProviderFailure, LLMToolCall, get_chat_complet
 
 AGENT_PROVIDER_ERROR_CODE = "AGENT_PROVIDER_ERROR"
 AGENT_PROVIDER_TIMEOUT_CODE = "AGENT_PROVIDER_TIMEOUT"
+AGENT_DEV_FALLBACK_ENV = "AGENT_DEV_FALLBACK_ENABLED"
 
 
 class AgentChatError(Exception):
@@ -96,6 +98,38 @@ class AgentChatResult:
 
 
 class AgentChatService:
+    @staticmethod
+    def _is_dev_fallback_enabled() -> bool:
+        return os.environ.get(AGENT_DEV_FALLBACK_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
+
+    @staticmethod
+    def _get_latest_user_message(messages: list[dict[str, str]]) -> str:
+        for message in reversed(messages):
+            if message.get("role") == AgentMessage.Role.USER and message.get("content"):
+                return message["content"].strip()
+
+        return ""
+
+    @classmethod
+    def _build_dev_fallback_reply(
+        cls, messages: list[dict[str, str]], context: AgentChatContext
+    ) -> AgentChatResult:
+        latest_user_message = cls._get_latest_user_message(messages) or "Hello from local dev mode."
+        scope_label = (
+            f"project {context.project_name} ({context.project_identifier})"
+            if context.project_name and context.project_identifier
+            else f"workspace {context.workspace_slug}"
+        )
+
+        return AgentChatResult(
+            content=(
+                "Local dev fallback is active because no LLM provider is configured.\n\n"
+                f"You said: {latest_user_message}\n\n"
+                f"Current scope: {scope_label}.\n"
+                "Conversation persistence, streaming, and history recovery are working."
+            )
+        )
+
     @classmethod
     def build_system_prompt(cls, context: AgentChatContext) -> str:
         prompt_lines = [
@@ -117,6 +151,8 @@ class AgentChatService:
     def generate_reply(cls, messages: list[dict[str, str]], context: AgentChatContext) -> AgentChatResult:
         api_key, model, provider = get_llm_config()
         if not api_key or not model or not provider:
+            if cls._is_dev_fallback_enabled():
+                return cls._build_dev_fallback_reply(messages, context)
             raise AgentChatConfigurationError("LLM provider API key and model are required")
 
         tools = AgentToolRegistry.list(scope="project" if context.project_id else "workspace")

@@ -5,7 +5,15 @@
  */
 
 import type { AppendMessage, MessageStatus, ThreadMessageLike } from "@assistant-ui/react";
-import type { IAgentMessage, TAgentMessageStatus } from "@plane/types";
+import type { IAgentMessage, IAgentToolCall, IAgentToolResult, TAgentMessageStatus } from "@plane/types";
+
+type IAgentThreadCustomMetadata = {
+  agentConversationId?: string;
+  agentToolCalls?: IAgentToolCall[] | null;
+  agentToolResults?: IAgentToolResult[] | null;
+  agentOptimistic?: boolean;
+  agentPlaceholder?: boolean;
+};
 
 const COMPLETE_STATUS: MessageStatus = {
   type: "complete",
@@ -56,6 +64,12 @@ export const toThreadMessageLike = (message: IAgentMessage): ThreadMessageLike =
   };
 };
 
+const getAgentThreadCustomMetadata = (message: ThreadMessageLike): IAgentThreadCustomMetadata | undefined =>
+  message.metadata?.custom as IAgentThreadCustomMetadata | undefined;
+
+export const getAgentMessageToolResults = (message: ThreadMessageLike): IAgentToolResult[] | null =>
+  getAgentThreadCustomMetadata(message)?.agentToolResults ?? null;
+
 export const createOptimisticUserMessage = (id: string, content: string): ThreadMessageLike => ({
   role: "user",
   id,
@@ -88,7 +102,7 @@ export const updateAssistantMessageDelta = (
   nextId?: string
 ): ThreadMessageLike => {
   const currentContent = typeof message.content === "string" ? message.content : "";
-  const placeholder = message.metadata?.custom as { agentPlaceholder?: boolean } | undefined;
+  const placeholder = getAgentThreadCustomMetadata(message);
 
   return {
     ...message,
@@ -98,7 +112,7 @@ export const updateAssistantMessageDelta = (
     metadata: {
       ...message.metadata,
       custom: {
-        ...(message.metadata?.custom as Record<string, unknown> | undefined),
+        ...(getAgentThreadCustomMetadata(message) as Record<string, unknown> | undefined),
         agentPlaceholder: false,
       },
     },

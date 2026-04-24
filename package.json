@@ -17,9 +17,13 @@
     "check:lint": "turbo run check:lint",
     "check:format": "turbo run check:format",
     "check:types": "turbo run check:types",
+    "test:e2e": "playwright test",
+    "test:e2e:u7": "playwright test tests/e2e/agent-u7-create-issue.spec.ts",
+    "test:e2e:install": "playwright install chromium",
     "prepare": "husky"
   },
   "devDependencies": {
+    "@playwright/test": "1.58.1",
     "husky": "9.1.7",
     "lint-staged": "16.2.7",
     "oxfmt": "0.35.0",
