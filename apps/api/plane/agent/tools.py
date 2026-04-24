@@ -8,6 +8,7 @@ from html import escape
 
 from django.db.models import Q
 
+from plane.app.issue_creation import enqueue_issue_created_activity
 from plane.app.serializers import IssueCreateSerializer
 from plane.app.permissions.base import ROLE
 from plane.db.models import Project, ProjectMember, WorkspaceMember
@@ -325,6 +326,13 @@ class CreateIssueTool:
         issue = (
             issue.__class__.objects.select_related("project", "state")
             .get(id=issue.id)
+        )
+
+        enqueue_issue_created_activity(
+            requested_data=input_data,
+            actor_id=ctx.user_id,
+            issue_id=str(issue.id),
+            project_id=str(project.id),
         )
 
         return AgentToolExecutionResult(

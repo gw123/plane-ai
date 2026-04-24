@@ -32,6 +32,7 @@ from rest_framework import status
 from rest_framework.response import Response
 
 # Module imports
+from plane.app.issue_creation import enqueue_issue_created_activity
 from plane.app.permissions import ROLE, allow_permission
 from plane.app.serializers import (
     IssueCreateSerializer,
@@ -404,16 +405,11 @@ class IssueViewSet(BaseViewSet):
         if serializer.is_valid():
             serializer.save()
 
-            # Track the issue
-            issue_activity.delay(
-                type="issue.activity.created",
-                requested_data=json.dumps(self.request.data, cls=DjangoJSONEncoder),
+            enqueue_issue_created_activity(
+                requested_data=request.data,
                 actor_id=str(request.user.id),
                 issue_id=str(serializer.data.get("id", None)),
                 project_id=str(project_id),
-                current_instance=None,
-                epoch=int(timezone.now().timestamp()),
-                notification=True,
                 origin=base_host(request=request, is_app=True),
             )
             queryset = self.get_queryset()
