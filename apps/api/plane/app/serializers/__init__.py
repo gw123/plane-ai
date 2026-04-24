@@ -3,6 +3,12 @@
 # See the LICENSE file for details.
 
 from .base import BaseSerializer
+from .agent import (
+    AgentChatRequestSerializer,
+    AgentConversationSerializer,
+    AgentConversationDetailSerializer,
+    AgentMessageSerializer,
+)
 from .user import (
     UserSerializer,
     UserLiteSerializer,

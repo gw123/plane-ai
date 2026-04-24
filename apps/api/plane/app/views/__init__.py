@@ -10,6 +10,7 @@ from .project.base import (
     DeployBoardViewSet,
     ProjectArchiveUnarchiveEndpoint,
 )
+from .agent import AgentConversationViewSet
 
 from .project.invite import (
     UserProjectInvitationsViewset,
