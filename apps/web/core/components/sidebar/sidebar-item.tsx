@@ -4,6 +4,7 @@
  * See the LICENSE file for details.
  */
 
+import * as React from "react";
 import Link from "next/link";
 import { cn } from "@plane/utils";
 
@@ -48,6 +49,8 @@ interface AppSidebarButtonItemProps {
   disabled?: boolean;
   className?: string;
 }
+
+type AppSidebarItemRef = HTMLAnchorElement | HTMLButtonElement;
 
 // ============================================================================
 // STYLES
@@ -97,7 +100,10 @@ function AppSidebarItemIcon({ icon, highlight }: AppSidebarItemIconProps) {
   );
 }
 
-function AppSidebarLinkItem({ href, children, className }: AppSidebarLinkItemProps) {
+const AppSidebarLinkItem = React.forwardRef<HTMLAnchorElement, AppSidebarLinkItemProps>(function AppSidebarLinkItem(
+  { href, children, className },
+  _ref
+) {
   if (!href) return null;
 
   return (
@@ -105,28 +111,35 @@ function AppSidebarLinkItem({ href, children, className }: AppSidebarLinkItemPro
       {children}
     </Link>
   );
-}
+});
 
-function AppSidebarButtonItem({ children, onClick, disabled = false, className }: AppSidebarButtonItemProps) {
-  return (
-    <button className={cn(styles.base, className)} onClick={onClick} disabled={disabled} type="button">
-      {children}
-    </button>
-  );
-}
+const AppSidebarButtonItem = React.forwardRef<HTMLButtonElement, AppSidebarButtonItemProps>(
+  function AppSidebarButtonItem({ children, onClick, disabled = false, className }, ref) {
+    return (
+      <button ref={ref} className={cn(styles.base, className)} onClick={onClick} disabled={disabled} type="button">
+        {children}
+      </button>
+    );
+  }
+);
 
 // ============================================================================
 // MAIN COMPONENT
 // ============================================================================
 
-export type AppSidebarItemComponent = React.FC<AppSidebarItemProps> & {
+export type AppSidebarItemComponent = React.ForwardRefExoticComponent<
+  AppSidebarItemProps & React.RefAttributes<AppSidebarItemRef>
+> & {
   Label: React.FC<AppSidebarItemLabelProps>;
   Icon: React.FC<AppSidebarItemIconProps>;
-  Link: React.FC<AppSidebarLinkItemProps>;
-  Button: React.FC<AppSidebarButtonItemProps>;
+  Link: React.ForwardRefExoticComponent<AppSidebarLinkItemProps & React.RefAttributes<HTMLAnchorElement>>;
+  Button: React.ForwardRefExoticComponent<AppSidebarButtonItemProps & React.RefAttributes<HTMLButtonElement>>;
 };
 
-function AppSidebarItem({ variant = "link", item }: AppSidebarItemProps) {
+const AppSidebarItem = React.forwardRef<AppSidebarItemRef, AppSidebarItemProps>(function AppSidebarItem(
+  { variant = "link", item },
+  ref
+) {
   if (!item) return null;
 
   const { icon, isActive, label, href, onClick, disabled, showLabel = true } = item;
@@ -143,11 +156,11 @@ function AppSidebarItem({ variant = "link", item }: AppSidebarItemProps) {
   }
 
   return (
-    <AppSidebarButtonItem onClick={onClick} disabled={disabled}>
+    <AppSidebarButtonItem onClick={onClick} disabled={disabled} ref={ref as React.Ref<HTMLButtonElement>}>
       {commonItems}
     </AppSidebarButtonItem>
   );
-}
+}) as AppSidebarItemComponent;
 
 // ============================================================================
 // COMPOUND COMPONENT ASSIGNMENT
@@ -157,6 +170,10 @@ AppSidebarItem.Label = AppSidebarItemLabel;
 AppSidebarItem.Icon = AppSidebarItemIcon;
 AppSidebarItem.Link = AppSidebarLinkItem;
 AppSidebarItem.Button = AppSidebarButtonItem;
+
+AppSidebarLinkItem.displayName = "AppSidebarLinkItem";
+AppSidebarButtonItem.displayName = "AppSidebarButtonItem";
+AppSidebarItem.displayName = "AppSidebarItem";
 
 export { AppSidebarItem };
 export type { AppSidebarItemData, AppSidebarItemProps };
