@@ -34,6 +34,29 @@ import type { TProject } from "@/plane-web/types";
 // local imports
 import { SidebarProjectsListItem } from "./projects-list-item";
 
+const PROJECT_LIST_LOADER_KEYS = [
+  "project-loader-1",
+  "project-loader-2",
+  "project-loader-3",
+  "project-loader-4",
+] as const;
+
+const getScrollableAncestor = (element: HTMLElement | null): HTMLElement | null => {
+  let currentElement = element?.parentElement ?? null;
+
+  while (currentElement) {
+    const { overflowY } = window.getComputedStyle(currentElement);
+
+    if (overflowY === "auto" || overflowY === "scroll" || overflowY === "overlay") {
+      return currentElement;
+    }
+
+    currentElement = currentElement.parentElement;
+  }
+
+  return null;
+};
+
 export const SidebarProjectsList = observer(function SidebarProjectsList() {
   // states
   const [isAllProjectsListOpen, setIsAllProjectsListOpen] = useState(true);
@@ -68,13 +91,12 @@ export const SidebarProjectsList = observer(function SidebarProjectsList() {
   const hasMoreProjects =
     projectPreferences.showLimitedProjects && joinedProjects.length > projectPreferences.limitedProjectsCount;
 
-  const handleCopyText = (projectId: string) => {
-    copyUrlToClipboard(`${workspaceSlug}/projects/${projectId}/issues`).then(() => {
-      setToast({
-        type: TOAST_TYPE.SUCCESS,
-        title: t("link_copied"),
-        message: t("project_link_copied_to_clipboard"),
-      });
+  const handleCopyText = async (projectId: string) => {
+    await copyUrlToClipboard(`${workspaceSlug}/projects/${projectId}/issues`);
+    setToast({
+      type: TOAST_TYPE.SUCCESS,
+      title: t("link_copied"),
+      message: t("project_link_copied_to_clipboard"),
     });
   };
 
@@ -112,25 +134,24 @@ export const SidebarProjectsList = observer(function SidebarProjectsList() {
    * Implementing scroll animation styles based on the scroll length of the container
    */
   useEffect(() => {
+    const scrollContainer = getScrollableAncestor(containerRef.current);
+
+    if (!scrollContainer) return;
+
     const handleScroll = () => {
-      if (containerRef.current) {
-        const scrollTop = containerRef.current.scrollTop;
-        setIsScrolled(scrollTop > 0);
-      }
+      setIsScrolled(scrollContainer.scrollTop > 0);
     };
-    const currentContainerRef = containerRef.current;
-    if (currentContainerRef) {
-      currentContainerRef.addEventListener("scroll", handleScroll);
-    }
+
+    handleScroll();
+    scrollContainer.addEventListener("scroll", handleScroll);
+
     return () => {
-      if (currentContainerRef) {
-        currentContainerRef.removeEventListener("scroll", handleScroll);
-      }
+      scrollContainer.removeEventListener("scroll", handleScroll);
     };
-  }, [containerRef]);
+  }, []);
 
   useEffect(() => {
-    const element = containerRef.current;
+    const element = getScrollableAncestor(containerRef.current);
 
     if (!element) return;
 
@@ -229,8 +250,8 @@ export const SidebarProjectsList = observer(function SidebarProjectsList() {
             >
               {loader === "init-loader" && (
                 <Loader className="w-full space-y-1.5">
-                  {Array.from({ length: 4 }).map((_, index) => (
-                    <Loader.Item key={index} height="28px" />
+                  {PROJECT_LIST_LOADER_KEYS.map((loaderKey) => (
+                    <Loader.Item key={loaderKey} height="28px" />
                   ))}
                 </Loader>
               )}

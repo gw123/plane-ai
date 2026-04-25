@@ -35,7 +35,7 @@ interface ILabelItemBlock {
   customMenuItems: ICustomMenuItem[];
   handleLabelDelete: (label: IIssueLabel) => void;
   isLabelGroup?: boolean;
-  dragHandleRef: MutableRefObject<HTMLButtonElement | null>;
+  dragHandleRef: MutableRefObject<HTMLDivElement | null>;
   disabled?: boolean;
   draggable?: boolean;
 }

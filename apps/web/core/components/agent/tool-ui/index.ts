@@ -5,6 +5,7 @@
  */
 
 export * from "./issue-created-card";
+export * from "./issue-list-card";
 export * from "./project-list-card";
 export * from "./tool-error-card";
 export * from "./tool-renderer-registry";

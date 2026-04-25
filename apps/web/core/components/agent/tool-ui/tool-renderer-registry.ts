@@ -33,6 +33,26 @@ type TProjectListCardOutput = {
   projects: TProjectListCardProject[];
 };
 
+type TIssueListCardIssue = {
+  id: string;
+  display_id: string;
+  name: string;
+  priority: TIssuePriorities;
+  start_date: string | null;
+  target_date: string | null;
+  state: {
+    id: string;
+    name: string;
+    group: TStateGroups;
+    color: string;
+  };
+};
+
+type TIssueListCardOutput = {
+  count: number;
+  issues: TIssueListCardIssue[];
+};
+
 export type TAgentToolRenderModel =
   | {
       kind: "create_issue";
@@ -45,6 +65,12 @@ export type TAgentToolRenderModel =
       callId: string;
       toolName: "list_projects";
       output: TProjectListCardOutput;
+    }
+  | {
+      kind: "list_issues";
+      callId: string;
+      toolName: "list_issues";
+      output: TIssueListCardOutput;
     }
   | {
       kind: "error";
@@ -129,6 +155,41 @@ const isProjectListCardOutput = (value: unknown): value is TProjectListCardOutpu
   return value.projects.every(isProjectListCardProject);
 };
 
+const isNullableDateString = (value: unknown): value is string | null => value === null || isString(value);
+
+const isIssueListCardIssue = (value: unknown): value is TIssueListCardIssue => {
+  if (!isRecord(value)) return false;
+  if (
+    !isString(value.id) ||
+    !isString(value.display_id) ||
+    !isString(value.name) ||
+    !isString(value.priority) ||
+    !ISSUE_PRIORITIES.has(value.priority as TIssuePriorities) ||
+    !isNullableDateString(value.start_date) ||
+    !isNullableDateString(value.target_date)
+  ) {
+    return false;
+  }
+
+  const state = value.state;
+  if (!isRecord(state)) return false;
+
+  return (
+    isString(state.id) &&
+    isString(state.name) &&
+    isString(state.group) &&
+    STATE_GROUPS.has(state.group as TStateGroups) &&
+    isString(state.color)
+  );
+};
+
+const isIssueListCardOutput = (value: unknown): value is TIssueListCardOutput => {
+  if (!isRecord(value)) return false;
+  if (!isNumber(value.count) || !Array.isArray(value.issues)) return false;
+
+  return value.issues.every(isIssueListCardIssue);
+};
+
 const toAgentToolRenderModel = (toolResult: IAgentToolResult): TAgentToolRenderModel | null => {
   if (!toolResult.success) {
     return {
@@ -153,6 +214,15 @@ const toAgentToolRenderModel = (toolResult: IAgentToolResult): TAgentToolRenderM
       kind: "list_projects",
       callId: toolResult.call_id,
       toolName: "list_projects",
+      output: toolResult.output,
+    };
+  }
+
+  if (toolResult.tool_name === "list_issues" && isIssueListCardOutput(toolResult.output)) {
+    return {
+      kind: "list_issues",
+      callId: toolResult.call_id,
+      toolName: "list_issues",
       output: toolResult.output,
     };
   }

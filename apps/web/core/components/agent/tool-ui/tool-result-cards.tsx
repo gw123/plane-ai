@@ -5,6 +5,7 @@
  */
 
 import { IssueCreatedCard } from "./issue-created-card";
+import { IssueListCard } from "./issue-list-card";
 import { ProjectListCard } from "./project-list-card";
 import { ToolErrorCard } from "./tool-error-card";
 import type { TAgentToolRenderModel } from "./tool-renderer-registry";
@@ -27,6 +28,10 @@ export function AgentToolResultCards(props: AgentToolResultCardsProps) {
 
         if (result.kind === "list_projects") {
           return <ProjectListCard key={`${result.callId}:${result.kind}`} result={result} />;
+        }
+
+        if (result.kind === "list_issues") {
+          return <IssueListCard key={`${result.callId}:${result.kind}`} result={result} />;
         }
 
         return <ToolErrorCard key={`${result.callId}:${result.kind}`} result={result} />;

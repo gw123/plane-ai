@@ -87,6 +87,55 @@ test("getAgentToolRenderModels maps list_projects outputs to ProjectListCard mod
   assert.equal(renderModels[0]?.output.count, 2);
 });
 
+test("getAgentToolRenderModels maps list_issues outputs to IssueListCard models", () => {
+  const renderModels = getAgentToolRenderModels([
+    {
+      call_id: "call-issues-1",
+      tool_name: "list_issues",
+      success: true,
+      output: {
+        count: 2,
+        issues: [
+          {
+            id: "issue-1",
+            display_id: "ALPHA-1",
+            name: "Fix login crash",
+            priority: "high",
+            start_date: null,
+            target_date: "2026-04-30",
+            state: {
+              id: "state-1",
+              name: "Backlog",
+              group: "backlog",
+              color: "#60646C",
+            },
+          },
+          {
+            id: "issue-2",
+            display_id: "ALPHA-2",
+            name: "Polish onboarding copy",
+            priority: "medium",
+            start_date: "2026-04-25",
+            target_date: null,
+            state: {
+              id: "state-2",
+              name: "In Progress",
+              group: "started",
+              color: "#2563EB",
+            },
+          },
+        ],
+      },
+      error: null,
+    },
+  ]);
+
+  assert.equal(renderModels[0]?.kind, "list_issues");
+  assert.equal(renderModels[0]?.toolName, "list_issues");
+  assert.equal(renderModels[0]?.output.count, 2);
+  assert.equal(renderModels[0]?.output.issues[0]?.display_id, "ALPHA-1");
+});
+
 test("getAgentToolRenderModels maps failed tool results to error cards", () => {
   const renderModels = getAgentToolRenderModels([
     {

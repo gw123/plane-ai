@@ -92,21 +92,19 @@ export const WorkspaceMenuRoot = observer(function WorkspaceMenuRoot(props: Work
           <>
             {variant === "sidebar" && (
               <Menu.Button
-                className={cn("flex size-8 w-full items-center justify-center rounded-md", {
+                className={cn("group flex size-8 w-full items-center justify-center rounded-md text-tertiary", {
                   "bg-layer-1": open,
                 })}
               >
-                <AppSidebarItem
-                  variant="button"
-                  item={{
-                    icon: (
-                      <WorkspaceLogo
-                        logo={activeWorkspace?.logo_url}
-                        name={activeWorkspace?.name}
-                        classNames="size-8 rounded-md border border-subtle"
-                      />
-                    ),
-                  }}
+                <AppSidebarItem.Icon
+                  icon={
+                    <WorkspaceLogo
+                      logo={activeWorkspace?.logo_url}
+                      name={activeWorkspace?.name}
+                      classNames="size-8 rounded-md border border-subtle"
+                    />
+                  }
+                  highlight={open}
                 />
               </Menu.Button>
             )}

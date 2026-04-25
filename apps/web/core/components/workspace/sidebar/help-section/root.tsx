@@ -32,15 +32,8 @@ export const HelpMenuRoot = observer(function HelpMenuRoot() {
       <ProductUpdatesModal isOpen={isProductUpdatesModalOpen} handleClose={() => setProductUpdatesModalOpen(false)} />
 
       <CustomMenu
-        customButton={
-          <AppSidebarItem
-            variant="button"
-            item={{
-              icon: <HelpCircle className="size-5" />,
-              isActive: isNeedHelpOpen,
-            }}
-          />
-        }
+        customButtonClassName="group flex flex-col items-center justify-center gap-0.5 text-tertiary"
+        customButton={<AppSidebarItem.Icon icon={<HelpCircle className="size-5" />} highlight={isNeedHelpOpen} />}
         // customButtonClassName="relative grid place-items-center rounded-md p-1.5 outline-none"
         menuButtonOnClick={() => !isNeedHelpOpen && setIsNeedHelpOpen(true)}
         onMenuClose={() => setIsNeedHelpOpen(false)}

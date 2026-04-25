@@ -60,7 +60,25 @@ const getConversationLabel = (conversation: IAgentConversation) => {
   return calculateTimeAgo(conversation.created_at);
 };
 
-const getMessageText = (message: ThreadMessageLike) => (typeof message.content === "string" ? message.content : "");
+const getMessageText = (message: ThreadMessageLike) => {
+  if (typeof message.content === "string") return message.content;
+  if (!Array.isArray(message.content)) return "";
+
+  return message.content
+    .flatMap((part) => {
+      if (!part || typeof part !== "object" || !("type" in part)) return [];
+      return part.type === "text" || part.type === "reasoning" ? [typeof part.text === "string" ? part.text : ""] : [];
+    })
+    .join("");
+};
+
+const hasMessageContent = (message: ThreadMessageLike) => {
+  if (typeof message.content === "string") {
+    return message.content.trim().length > 0;
+  }
+
+  return Array.isArray(message.content) && message.content.length > 0;
+};
 
 export const AgentThreadShell = observer(function AgentThreadShell(props: AgentThreadShellProps) {
   const { workspaceSlug, projectId, conversationId, title, subtitle } = props;
@@ -426,7 +444,7 @@ export const AgentThreadShell = observer(function AgentThreadShell(props: AgentT
                           message.role === "user" ||
                           message.status?.type === "running" ||
                           Boolean(fallbackToolResultText) ||
-                          getMessageText(message).trim().length > 0;
+                          hasMessageContent(message);
 
                         return (
                           <MessagePrimitive.Root
@@ -451,7 +469,7 @@ export const AgentThreadShell = observer(function AgentThreadShell(props: AgentT
                                       <Loader2 className="h-4 w-4 animate-spin" />
                                       <span>{getMessageText(message) || "Working..."}</span>
                                     </div>
-                                  ) : fallbackToolResultText && getMessageText(message).trim().length === 0 ? (
+                                  ) : fallbackToolResultText && !hasMessageContent(message) ? (
                                     <span>{fallbackToolResultText}</span>
                                   ) : (
                                     <MessagePrimitive.Content />

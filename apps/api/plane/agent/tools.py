@@ -12,7 +12,8 @@ from django.db.models import Q
 from plane.app.issue_creation import enqueue_issue_created_activity
 from plane.app.serializers import IssueCreateSerializer
 from plane.app.permissions.base import ROLE
-from plane.db.models import Project, ProjectMember, State, WorkspaceMember
+from plane.db.models import Issue, Project, ProjectMember, State, WorkspaceMember
+from plane.utils.issue_search import search_issues
 
 
 @dataclass(frozen=True)
@@ -405,10 +406,268 @@ class CreateIssueTool:
         )
 
 
+class ListIssuesTool:
+    SUPPORTED_INPUT_KEYS = frozenset({"query", "priority", "state_group", "assignee_id", "limit"})
+    DEFAULT_LIMIT = 5
+    MAX_LIMIT = 20
+    VALID_PRIORITIES = frozenset({"urgent", "high", "medium", "low", "none"})
+    VALID_STATE_GROUPS = frozenset({"backlog", "unstarted", "started", "completed", "cancelled"})
+
+    definition = AgentToolDefinition(
+        name="list_issues",
+        description=(
+            "List issues in the current project. Use this when the user asks which issues exist, "
+            "what is open, what is due soon, or wants a shortlist. Supports optional filtering by "
+            "title/query text, priority, state group, assignee, and limit."
+        ),
+        scope=["project"],
+        input_schema={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "priority": {"type": "string", "enum": ["urgent", "high", "medium", "low", "none"]},
+                "state_group": {
+                    "type": "string",
+                    "enum": ["backlog", "unstarted", "started", "completed", "cancelled"],
+                },
+                "assignee_id": {"type": "string"},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 20},
+            },
+            "additionalProperties": False,
+        },
+        output_schema={
+            "type": "object",
+            "properties": {
+                "count": {"type": "integer"},
+                "issues": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string"},
+                            "display_id": {"type": "string"},
+                            "name": {"type": "string"},
+                            "priority": {"type": "string"},
+                            "start_date": {"type": ["string", "null"]},
+                            "target_date": {"type": ["string", "null"]},
+                            "state": {
+                                "type": "object",
+                                "properties": {
+                                    "id": {"type": "string"},
+                                    "name": {"type": "string"},
+                                    "group": {"type": "string"},
+                                    "color": {"type": "string"},
+                                },
+                                "required": ["id", "name", "group", "color"],
+                            },
+                        },
+                        "required": [
+                            "id",
+                            "display_id",
+                            "name",
+                            "priority",
+                            "start_date",
+                            "target_date",
+                            "state",
+                        ],
+                    },
+                },
+            },
+            "required": ["count", "issues"],
+        },
+        readonly=True,
+    )
+
+    @classmethod
+    def _build_validation_error(cls, message: str) -> AgentToolExecutionResult:
+        return AgentToolExecutionResult(
+            success=False,
+            output=None,
+            error={
+                "code": "AGENT_TOOL_VALIDATION_ERROR",
+                "message": message,
+            },
+        )
+
+    @classmethod
+    def _validate_supported_input(cls, input_data: dict[str, Any]) -> AgentToolExecutionResult | None:
+        unsupported_keys = sorted(set(input_data.keys()) - cls.SUPPORTED_INPUT_KEYS)
+        if not unsupported_keys:
+            return None
+
+        unsupported_fields = ", ".join(unsupported_keys)
+        return cls._build_validation_error(
+            f"Unsupported list_issues input fields: {unsupported_fields}. "
+            "Only query, priority, state_group, assignee_id, limit are supported."
+        )
+
+    @classmethod
+    def _normalize_input(cls, input_data: dict[str, Any]) -> tuple[dict[str, Any] | None, AgentToolExecutionResult | None]:
+        unsupported_input_result = cls._validate_supported_input(input_data)
+        if unsupported_input_result is not None:
+            return None, unsupported_input_result
+
+        normalized: dict[str, Any] = {"limit": cls.DEFAULT_LIMIT}
+
+        query = input_data.get("query")
+        if query is not None:
+            if not isinstance(query, str) or not query.strip():
+                return None, cls._build_validation_error("list_issues query must be a non-empty string.")
+            normalized["query"] = query.strip()
+
+        priority = input_data.get("priority")
+        if priority is not None:
+            if not isinstance(priority, str) or priority not in cls.VALID_PRIORITIES:
+                return None, cls._build_validation_error(
+                    "list_issues priority must be one of urgent, high, medium, low, none."
+                )
+            normalized["priority"] = priority
+
+        state_group = input_data.get("state_group")
+        if state_group is not None:
+            if not isinstance(state_group, str) or state_group not in cls.VALID_STATE_GROUPS:
+                return None, cls._build_validation_error(
+                    "list_issues state_group must be one of backlog, unstarted, started, completed, cancelled."
+                )
+            normalized["state_group"] = state_group
+
+        assignee_id = input_data.get("assignee_id")
+        if assignee_id is not None:
+            if not isinstance(assignee_id, str) or not assignee_id.strip():
+                return None, cls._build_validation_error("list_issues assignee_id must be a non-empty string.")
+            normalized["assignee_id"] = assignee_id.strip()
+
+        limit = input_data.get("limit")
+        if limit is not None:
+            if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1 or limit > cls.MAX_LIMIT:
+                return None, cls._build_validation_error("list_issues limit must be an integer between 1 and 20.")
+            normalized["limit"] = limit
+
+        return normalized, None
+
+    @staticmethod
+    def _has_project_read_access(ctx: AgentToolExecutionContext) -> bool:
+        if ctx.project_id is None:
+            return False
+
+        has_project_membership = ProjectMember.objects.filter(
+            member_id=ctx.user_id,
+            workspace_id=ctx.workspace_id,
+            project_id=ctx.project_id,
+            is_active=True,
+        ).exists()
+        if has_project_membership:
+            return True
+
+        return WorkspaceMember.objects.filter(
+            member_id=ctx.user_id,
+            workspace_id=ctx.workspace_id,
+            role=ROLE.ADMIN.value,
+            is_active=True,
+        ).exists()
+
+    @classmethod
+    def execute(cls, input_data: dict[str, Any], ctx: AgentToolExecutionContext) -> AgentToolExecutionResult:
+        if ctx.scope != "project" or ctx.project_id is None:
+            return AgentToolExecutionResult(
+                success=False,
+                output=None,
+                error={
+                    "code": "AGENT_TOOL_FORBIDDEN",
+                    "message": "This tool is only available in project conversations.",
+                },
+            )
+
+        if not cls._has_project_read_access(ctx):
+            return AgentToolExecutionResult(
+                success=False,
+                output=None,
+                error={
+                    "code": "AGENT_TOOL_FORBIDDEN",
+                    "message": "You do not have permission to list issues in this project.",
+                },
+            )
+
+        normalized_input, validation_error = cls._normalize_input(input_data)
+        if validation_error is not None:
+            return validation_error
+
+        project = Project.objects.filter(id=ctx.project_id, workspace_id=ctx.workspace_id).first()
+        if project is None:
+            return AgentToolExecutionResult(
+                success=False,
+                output=None,
+                error={
+                    "code": "AGENT_TOOL_NOT_FOUND",
+                    "message": "Project not found.",
+                },
+            )
+
+        issues = (
+            Issue.issue_objects.filter(
+                workspace_id=ctx.workspace_id,
+                project_id=ctx.project_id,
+                is_draft=False,
+                state__isnull=False,
+            )
+            .select_related("project", "state")
+            .distinct()
+        )
+
+        query = normalized_input.get("query")
+        if query:
+            issues = search_issues(query, issues)
+
+        priority = normalized_input.get("priority")
+        if priority:
+            issues = issues.filter(priority=priority)
+
+        state_group = normalized_input.get("state_group")
+        if state_group:
+            issues = issues.filter(state__group=state_group)
+
+        assignee_id = normalized_input.get("assignee_id")
+        if assignee_id:
+            issues = issues.filter(
+                issue_assignee__assignee_id=assignee_id,
+                issue_assignee__deleted_at__isnull=True,
+            )
+
+        issues = issues.distinct()
+        total_count = issues.count()
+        limited_issues = issues.order_by("sequence_id")[: normalized_input["limit"]]
+
+        return AgentToolExecutionResult(
+            success=True,
+            output={
+                "count": total_count,
+                "issues": [
+                    {
+                        "id": str(issue.id),
+                        "display_id": f"{issue.project.identifier}-{issue.sequence_id}",
+                        "name": issue.name,
+                        "priority": issue.priority,
+                        "start_date": issue.start_date.isoformat() if issue.start_date else None,
+                        "target_date": issue.target_date.isoformat() if issue.target_date else None,
+                        "state": {
+                            "id": str(issue.state_id),
+                            "name": issue.state.name,
+                            "group": issue.state.group,
+                            "color": issue.state.color,
+                        },
+                    }
+                    for issue in limited_issues
+                ],
+            },
+            error=None,
+        )
+
+
 class AgentToolRegistry:
     _tools = {
         ListProjectsTool.definition.name: ListProjectsTool,
         CreateIssueTool.definition.name: CreateIssueTool,
+        ListIssuesTool.definition.name: ListIssuesTool,
     }
 
     @classmethod

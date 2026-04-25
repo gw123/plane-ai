@@ -37,7 +37,7 @@ export interface IStateStore {
   getProjectDefaultStateId: (projectId: string | null | undefined) => string | undefined;
   // fetch actions
   fetchProjectStates: (workspaceSlug: string, projectId: string) => Promise<IState[]>;
-  fetchProjectIntakeState: (workspaceSlug: string, projectId: string) => Promise<IIntakeState>;
+  fetchProjectIntakeState: (workspaceSlug: string, projectId: string) => Promise<IIntakeState | undefined>;
   fetchWorkspaceStates: (workspaceSlug: string) => Promise<IState[]>;
   // crud actions
   createState: (workspaceSlug: string, projectId: string, data: Partial<IState>) => Promise<IState>;
@@ -125,10 +125,10 @@ export class StateStore implements IStateStore {
 
     // Ensure all STATE_GROUPS are present
     const allGroups = Object.keys(STATE_GROUPS).reduce(
-      (acc, group) => ({
-        ...acc,
-        [group]: groupedStates[group] || [],
-      }),
+      (acc, group) => {
+        acc[group] = groupedStates[group] || [];
+        return acc;
+      },
       {} as Record<string, IState[]>
     );
 
@@ -235,7 +235,16 @@ export class StateStore implements IStateStore {
   fetchProjectIntakeState = async (workspaceSlug: string, projectId: string) => {
     const intakeStateResponse = await this.stateService.getIntakeState(workspaceSlug, projectId);
     runInAction(() => {
-      set(this.intakeStateMap, [intakeStateResponse.id], intakeStateResponse);
+      const existingStateId = Object.values(this.intakeStateMap).find((state) => state.project_id === projectId)?.id;
+
+      if (existingStateId && !intakeStateResponse) {
+        delete this.intakeStateMap[existingStateId];
+      }
+
+      if (intakeStateResponse?.id) {
+        set(this.intakeStateMap, [intakeStateResponse.id], intakeStateResponse);
+      }
+
       set(this.fetchedIntakeMap, projectId, true);
     });
     return intakeStateResponse;
@@ -307,10 +316,9 @@ export class StateStore implements IStateStore {
    */
   deleteState = async (workspaceSlug: string, projectId: string, stateId: string) => {
     if (!this.stateMap?.[stateId]) return;
-    await this.stateService.deleteState(workspaceSlug, projectId, stateId).then(() => {
-      runInAction(() => {
-        delete this.stateMap[stateId];
-      });
+    await this.stateService.deleteState(workspaceSlug, projectId, stateId);
+    runInAction(() => {
+      delete this.stateMap[stateId];
     });
   };
 
