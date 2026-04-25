@@ -5,10 +5,10 @@
  */
 
 import { ChevronRight, ListTodo } from "lucide-react";
-import { useParams } from "react-router";
+import { useNavigate, useParams } from "react-router";
 import { PriorityIcon, StateGroupIcon } from "@plane/propel/icons";
+import { ControlLink } from "@plane/ui";
 import { cn } from "@plane/utils";
-import Link from "@/app/compat/next/link";
 import type { TAgentToolRenderModel } from "./tool-renderer-registry";
 
 type IssueListCardProps = {
@@ -30,6 +30,7 @@ export function IssueListCard(props: IssueListCardProps) {
   const {
     result: { output },
   } = props;
+  const navigate = useNavigate();
   const { workspaceSlug } = useParams();
   const remainingIssues = Math.max(output.count - output.issues.length, 0);
 
@@ -54,9 +55,14 @@ export function IssueListCard(props: IssueListCardProps) {
             const targetDate = formatTargetDate(issue.target_date);
 
             return (
-              <Link
+              <ControlLink
                 key={issue.id}
                 href={href}
+                target="_self"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  navigate(href);
+                }}
                 className="group hover:border-accent-primary/30 hover:bg-surface-3 flex items-center gap-3 rounded-xl border border-subtle bg-surface-2 px-3 py-3 transition-colors"
               >
                 <div className="flex min-w-0 flex-1 flex-col gap-2">
@@ -93,7 +99,7 @@ export function IssueListCard(props: IssueListCardProps) {
                   </div>
                 </div>
                 <ChevronRight className="h-4 w-4 shrink-0 text-tertiary transition-transform group-hover:translate-x-0.5 group-hover:text-primary" />
-              </Link>
+              </ControlLink>
             );
           })
         ) : (

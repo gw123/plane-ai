@@ -52,6 +52,8 @@ const buildAgentPath = (scope: IAgentScopeRoute, conversationId?: string) => {
   return conversationId ? `/${scope.workspaceSlug}/agent/${conversationId}` : `/${scope.workspaceSlug}/agent`;
 };
 
+const normalizePathname = (pathname: string) => pathname.replace(/\/+$/, "") || "/";
+
 const getConversationLabel = (conversation: IAgentConversation) => {
   if (conversation.last_message_at) {
     return calculateTimeAgo(conversation.last_message_at);
@@ -213,6 +215,8 @@ export const AgentThreadShell = observer(function AgentThreadShell(props: AgentT
               revalidate: false,
             }
           );
+
+          navigate(buildAgentPath(scope, nextConversation.id), { replace: true });
         }
 
         await agentService.streamConversationChat(
@@ -270,19 +274,28 @@ export const AgentThreadShell = observer(function AgentThreadShell(props: AgentT
         }
 
         await syncConversationDetail(activeConversationId);
-
-        if (!conversationId && createdConversation) {
-          navigate(buildAgentPath(scope, createdConversation.id), { replace: true });
-        }
       } catch (error) {
+        let deletedCreatedConversation = false;
+
         if (createdConversation) {
-          await cleanupCreatedConversationAfterFailure({
+          const cleanupResult = await cleanupCreatedConversationAfterFailure({
             agentService,
             scope,
             conversationId: createdConversation.id,
             removeConversation: removeConversationFromList,
             revalidateConversations: revalidateConversationList,
           });
+
+          deletedCreatedConversation = cleanupResult.deleted;
+        }
+
+        if (
+          deletedCreatedConversation &&
+          typeof window !== "undefined" &&
+          normalizePathname(window.location.pathname) ===
+            normalizePathname(buildAgentPath(scope, createdConversation?.id))
+        ) {
+          navigate(buildAgentPath(scope), { replace: true });
         }
 
         if (isMountedRef.current) {
@@ -313,7 +326,8 @@ export const AgentThreadShell = observer(function AgentThreadShell(props: AgentT
   const activeConversationCandidate = conversationDetail?.conversation ?? null;
   const activeConversation = activeConversationCandidate?.id === conversationId ? activeConversationCandidate : null;
   const showEmptyViewport = messages.length === 0;
-  const loadingCurrentConversation = Boolean(conversationId) && !activeConversation && isConversationLoading;
+  const loadingCurrentConversation =
+    Boolean(conversationId) && !activeConversation && isConversationLoading && messages.length === 0;
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-surface-1">
